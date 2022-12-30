@@ -1,4 +1,5 @@
 from datetime import datetime
+
 import pytz
 from googleapiclient.errors import HttpError
 
@@ -13,12 +14,11 @@ def audit_log(type, string):
         fd.close()
 
 class GmailApp:
-    def __init__(self, first, last, email, label_name):
+    def __init__(self, first, last, email):
         self.first = first
         self.last = last
         self.email = email
         self.service = AuthorizeGoogle(['https://mail.google.com/'])
-        self.label_id = self.check_label(label_name)
     
     def list_inbox(self):
         try:
@@ -34,17 +34,30 @@ class GmailApp:
             audit_log("Error", f'An error occurred: {error}')
             return False
 
-    def add_quarantine(self, message_ids):
+    def add_label(self, message_ids, labels: list):
+        #Check if the lables are present, if not, create them.
+        labels_ids = []
+        for label in labels:
+            labels_ids.append(self.check_label(label))
+        
         try:
             body={
-                "addLabelIds": [self.label_id],
-                "ids": message_ids,
-                "removeLabelIds": ['INBOX']
+                "addLabelIds": labels_ids,
+                "ids": message_ids
             }
             self.service.users().messages().batchModify(userId=self.email, body=body).execute()
         except HttpError as error:
             audit_log("Error", f'An error occurred: {error}')
 
+    def del_label(self, message_ids, labels: list):       
+        try:
+            body={
+                "ids": message_ids,
+                "removeLabelIds": labels
+            }
+            self.service.users().messages().batchModify(userId=self.email, body=body).execute()
+        except HttpError as error:
+            audit_log("Error", f'An error occurred: {error}')
 
     def check_label(self, name):
         try:

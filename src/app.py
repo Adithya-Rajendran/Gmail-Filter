@@ -31,3 +31,5 @@ if __name__ == "__main__":
     app = GmailApp("Test", "Account", "spamfilterbottester@gmail.com", "Quarantine")
     handler(app)
     print("Done")
+
+# test

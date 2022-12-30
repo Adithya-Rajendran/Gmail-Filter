@@ -1,5 +1,3 @@
 *.json
 src/__pycache__/*
-src/blacklist.txt
-src/whitelist.txt
-src/logfile.txt
+src/*.txt

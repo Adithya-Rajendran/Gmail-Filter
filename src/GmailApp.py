@@ -2,7 +2,7 @@ from datetime import datetime
 import pytz
 from googleapiclient.errors import HttpError
 
-from Google import Create_Service
+from google_service import AuthorizeGoogle
 
 def audit_log(type, string):
         date_format='%m/%d/%Y %H:%M:%S %Z'
@@ -17,15 +17,8 @@ class GmailApp:
         self.first = first
         self.last = last
         self.email = email
-        self.service = self.create_Google_service()
+        self.service = AuthorizeGoogle(['https://mail.google.com/'])
         self.label_id = self.check_label(label_name)
-
-    def create_Google_service(self):
-        CLIENT_SECRET_FILE = 'credentials.json'
-        API_NAME = 'gmail'
-        API_VERSION = 'v1'
-        SCOPES = ['https://mail.google.com/']
-        return Create_Service(CLIENT_SECRET_FILE, API_NAME, API_VERSION, SCOPES)
     
     def list_inbox(self):
         try:

@@ -14,50 +14,39 @@ def audit_log(type, string):
         fd.close()
 
 class GmailApp:
-    def __init__(self, first, last, email):
-        self.first = first
-        self.last = last
-        self.email = email
+    def __init__(self):
+        self.email = "me"
         self.service = AuthorizeGoogle(['https://mail.google.com/'])
     
     def list_inbox(self):
         try:
-            return self.service.users().messages().list(userId=self.email, labelIds='INBOX').execute()
+            return self.service.users().messages().list(userId=self.email, labelIds='INBOX', q='is:read').execute()
         except HttpError as error:
-            audit_log("Error", f'An error occurred: {error}')
+            audit_log("Error ", f'An error occurred: {error}')
             return False
-    
+
     def get_message(self, message_id):
         try:
             return self.service.users().messages().get(userId=self.email, id=message_id, format='metadata').execute()
         except HttpError as error:
-            audit_log("Error", f'An error occurred: {error}')
+            audit_log("Error ", f'An error occurred: {error}')
             return False
 
-    def add_label(self, message_ids, labels: list):
+    def mod_label(self, message_ids, addlabels: list, dellabels: list):
         #Check if the lables are present, if not, create them.
         labels_ids = []
-        for label in labels:
+        for label in addlabels:
             labels_ids.append(self.check_label(label))
         
         try:
             body={
                 "addLabelIds": labels_ids,
-                "ids": message_ids
-            }
-            self.service.users().messages().batchModify(userId=self.email, body=body).execute()
-        except HttpError as error:
-            audit_log("Error", f'An error occurred: {error}')
-
-    def del_label(self, message_ids, labels: list):       
-        try:
-            body={
                 "ids": message_ids,
-                "removeLabelIds": labels
+                "removeLabelIds": dellabels
             }
             self.service.users().messages().batchModify(userId=self.email, body=body).execute()
         except HttpError as error:
-            audit_log("Error", f'An error occurred: {error}')
+            audit_log("Error ", f'An error occurred: {error}')
 
     def check_label(self, name):
         try:
@@ -66,7 +55,11 @@ class GmailApp:
                 if label.get("name") == name:
                     return label.get("id")
             else: 
-                label = self.service.users().labels().create(userId=self.email,body={"name":name}).execute()
+                body={
+                    "labelListVisibility": "labelShow",
+                    "name": name
+                }
+                label = self.service.users().labels().create(userId=self.email, body=body).execute()
                 return label.get("id")
         except HttpError as error:
-            audit_log("Error", f'An error occurred: {error}')
+            audit_log("Error ", f'An error occurred: {error}')

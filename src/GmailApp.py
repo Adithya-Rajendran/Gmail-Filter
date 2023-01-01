@@ -6,21 +6,21 @@ from googleapiclient.errors import HttpError
 from google_service import AuthorizeGoogle
 
 def audit_log(type, string):
-        date_format='%m/%d/%Y %H:%M:%S %Z'
-        date = datetime.now(tz=pytz.utc)
-        date = date.astimezone(pytz.timezone('US/Pacific'))
-        fd = open("logfile.txt", 'a')
-        fd.writelines(f'{date.strftime(date_format)} | {type} | {string}\n')
-        fd.close()
+    date_format='%m/%d/%Y %H:%M:%S %Z'
+    date = datetime.now(tz=pytz.utc)
+    date = date.astimezone(pytz.timezone('US/Pacific'))
+    fd = open("logfile.txt", 'a')
+    fd.writelines(f'{date.strftime(date_format)} | {type} | {string}\n')
+    fd.close()
 
 class GmailApp:
     def __init__(self):
         self.email = "me"
         self.service = AuthorizeGoogle(['https://mail.google.com/'])
     
-    def list_inbox(self):
+    def list_mail(self, label: str,filter: str):
         try:
-            return self.service.users().messages().list(userId=self.email, labelIds='INBOX', q='is:read').execute()
+            return self.service.users().messages().list(userId=self.email, labelIds=label, maxResults=500, q=filter).execute()
         except HttpError as error:
             audit_log("Error ", f'An error occurred: {error}')
             return False
@@ -47,6 +47,15 @@ class GmailApp:
             self.service.users().messages().batchModify(userId=self.email, body=body).execute()
         except HttpError as error:
             audit_log("Error ", f'An error occurred: {error}')
+            return False
+
+    def trash_mails(self, message_ids: list):
+        for messageid in message_ids:
+            try:
+                self.service.users().messages().trash(userId=self.email, id=messageid).execute()
+            except HttpError as error:
+                audit_log("Error ", f'An error occurred: {error}')
+                return False
 
     def check_label(self, name):
         try:

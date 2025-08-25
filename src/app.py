@@ -37,10 +37,10 @@ def classify_email(subject, body):
     
     # Get the probability of the email being spam (class 1)
     if prediction == 1:
-        return f"Prediction: SPAM (Confidence: {probability[0][1]:.2%})"
+        return prediction, f"{probability[0][1]:.2%}"
     else:
-        return f"Prediction: NOT SPAM (Confidence: {probability[0][0]:.2%})"
-
+        return prediction, f"{probability[0][0]:.2%}"
+    
 def checkLists(email_address, lists):
     domain = email_address.split('@')[-1]
     return email_address in lists or domain in lists
@@ -79,11 +79,11 @@ def filter_mail(messages):
     for message in messages:
         m = app.get_message(message.get('id'))
         subject, body = get_email_content(m)
-
-        print(subject)
-        print(classify_email(subject, body))
-
-        break
+        
+        prediction, probability = classify_email(subject, body)
+        if prediction == 1:
+            print(f"SPAM (Confidence: {probability})", subject)
+            readmail_ids.append(m.get("id"))
 
     return readmail_ids
 
@@ -95,6 +95,8 @@ def handler(app):
     if emails.get('messages'):
         print(f"Filtering {len(emails.get('messages'))} emails")
         filter_mail(emails.get('messages'))
+
+    print("Number of SPAM:", len(filter_mail(emails.get('messages'))))
 
 
 if __name__ == "__main__":

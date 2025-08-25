@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import pytz
-from googleapiclient.errors import HttpError
+from googleapiclient.errors import HttpError # type: ignore
 
 from google_service import AuthorizeGoogle
 

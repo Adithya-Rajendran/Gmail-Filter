@@ -1,0 +1,4 @@
+*.json
+src/__pycache__/*
+src/*.txt
+model/*

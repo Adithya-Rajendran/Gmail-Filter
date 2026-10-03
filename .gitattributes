@@ -1,0 +1,4 @@
+* text=auto eol=lf
+# Strip notebook outputs on commit (run `nbstripout --install` once per clone)
+*.ipynb filter=nbstripout
+*.ipynb diff=ipynb

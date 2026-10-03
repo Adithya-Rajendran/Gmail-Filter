@@ -1,0 +1,11 @@
+.git
+.venv
+.github
+data
+model
+tests
+*.ipynb
+**/__pycache__
+**/credentials.json
+**/token.json
+**/logfile.txt

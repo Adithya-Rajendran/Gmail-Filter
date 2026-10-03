@@ -1,4 +1,16 @@
-*.json
-src/__pycache__/*
-src/*.txt
+# Secrets and runtime data (OAuth credentials, tokens, logs)
+data/
+credentials.json
+token.json
+logfile.txt
+
+# Trained model artifacts
 model/*
+!model/.gitkeep
+
+# Python / tooling
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/

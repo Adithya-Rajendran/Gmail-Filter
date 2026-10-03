@@ -1,108 +1,94 @@
-import re
-import time
 import base64
-import joblib
+import os
+import sys
+import time
+
 from bs4 import BeautifulSoup
 
 from GmailApp import GmailApp, audit_log
+from spam_model import load_model, spam_probability
 
-try:
-    model = joblib.load('/usr/src/model/spam_classifier_model.pkl')
-    vectorizer = joblib.load('/usr/src/model/tfidf_vectorizer.pkl')
-    print("Model and vectorizer loaded successfully.")
-except FileNotFoundError:
-    print("Error: Model or vectorizer files not found.")
-    print("Please run the training script first to create these files.")
-    exit()
+MODEL_DIR = os.environ.get('MODEL_DIR', '/usr/src/model')
+# Gmail search query for the messages to classify
+QUERY = os.environ.get('GMAIL_QUERY', 'newer_than:1d')
+# If set, spam is tagged with this Gmail label; otherwise it is only reported
+SPAM_LABEL = os.environ.get('SPAM_LABEL')
+# Overrides the decision threshold chosen when the model was trained
+SPAM_THRESHOLD = os.environ.get('SPAM_THRESHOLD')
 
-def preprocess_text(text):
-    """Applies the exact same cleaning steps used during training."""
-    text = text.lower()
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
+def decode_body(data):
+    return base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
 
-def classify_email(subject, body):
-    """
-    Takes an email's subject and body, preprocesses them, and predicts
-    if it is spam (1) or not spam (0).
-    """
-    full_text = subject + " " + body
-    cleaned_text = preprocess_text(full_text)
-    
-    text_vector = vectorizer.transform([cleaned_text])
-    
-    prediction = model.predict(text_vector)
-    probability = model.predict_proba(text_vector)
-    
-    # Get the probability of the email being spam (class 1)
-    if prediction == 1:
-        return prediction, f"{probability[0][1]:.2%}"
-    else:
-        return prediction, f"{probability[0][0]:.2%}"
-    
-def checkLists(email_address, lists):
-    domain = email_address.split('@')[-1]
-    return email_address in lists or domain in lists
+def walk_parts(part):
+    """Yields a MIME part and all of its nested sub-parts."""
+    yield part
+    for sub_part in part.get('parts', []):
+        yield from walk_parts(sub_part)
 
 def get_email_content(message):
-    # Get value of 'payload' from dictionary 'txt'
     payload = message['payload']
-    headers = payload['headers']
-    # Look for Subject and Sender Email in the headers
-    for d in headers:
-        if d['name'] == 'Subject':
-            subject = d['value']
+    subject = next((h['value'] for h in payload.get('headers', [])
+                    if h['name'].lower() == 'subject'), '')
 
-    if 'parts' in payload:
-        parts = payload['parts']
-        for part in parts:
-            if part['mimeType'] == 'text/plain':
-                data = part['body']['data']
-                decoded_data = base64.urlsafe_b64decode(data).decode('utf-8')
-                body = decoded_data
-            elif part['mimeType'] == 'text/html':
-                data = part['body']['data']
-                decoded_data = base64.urlsafe_b64decode(data).decode('utf-8')
-                soup = BeautifulSoup(decoded_data, 'html.parser')
-                body = soup.get_text()
-    else:
-        data = payload['body']['data']
-        decoded_data = base64.urlsafe_b64decode(data).decode('utf-8')
-        body = decoded_data
+    # Collect text from every (possibly nested) part, skipping attachments
+    plain, html = [], []
+    for part in walk_parts(payload):
+        data = part.get('body', {}).get('data')
+        if not data or part.get('filename'):
+            continue
+        if part.get('mimeType') == 'text/plain':
+            plain.append(decode_body(data))
+        elif part.get('mimeType') == 'text/html':
+            html.append(BeautifulSoup(decode_body(data), 'html.parser').get_text())
 
+    # Prefer the plain text version when both are present
+    body = '\n'.join(plain or html)
     return subject, body
 
-def filter_mail(messages):
-    readmail_ids = []
+def filter_mail(app, pipeline, threshold, messages):
+    spam_ids = []
 
     for message in messages:
         m = app.get_message(message.get('id'))
+        if not m:
+            continue
         subject, body = get_email_content(m)
-        
-        prediction, probability = classify_email(subject, body)
-        if prediction == 1:
-            print(f"SPAM (Confidence: {probability})", subject)
-            readmail_ids.append(m.get("id"))
 
-    return readmail_ids
+        probability = spam_probability(pipeline, subject, body)
+        if probability >= threshold:
+            print(f"SPAM (Confidence: {probability:.2%})", subject)
+            spam_ids.append(m.get("id"))
+
+    return spam_ids
 
 
-def handler(app):
+def handler(app, pipeline, threshold):
     print("Getting the list of emails")
-    emails = app.list_mail('INBOX','(in:spam OR in:all) after:{}')
+    messages = app.list_mail('INBOX', QUERY)
 
-    if emails.get('messages'):
-        print(f"Filtering {len(emails.get('messages'))} emails")
-        filter_mail(emails.get('messages'))
+    print(f"Filtering {len(messages)} emails")
+    spam_ids = filter_mail(app, pipeline, threshold, messages)
+    print("Number of SPAM:", len(spam_ids))
 
-    print("Number of SPAM:", len(filter_mail(emails.get('messages'))))
+    if spam_ids and SPAM_LABEL:
+        print(f"Labelling spam as '{SPAM_LABEL}'")
+        if app.mod_label(spam_ids, [SPAM_LABEL], []):
+            audit_log("Label ", f"Labelled {len(spam_ids)} messages as '{SPAM_LABEL}'")
 
 
 if __name__ == "__main__":
+    try:
+        bundle = load_model(MODEL_DIR)
+    except FileNotFoundError:
+        print(f"Error: Model not found in {MODEL_DIR}.")
+        print("Please run train-model.ipynb first to create it.")
+        sys.exit(1)
+    threshold = float(SPAM_THRESHOLD) if SPAM_THRESHOLD else bundle['threshold']
+    print(f"Model loaded (spam threshold {threshold:.2f}).")
+
     app = GmailApp()
     start_time = time.time()
-    handler(app)
+    handler(app, bundle['pipeline'], threshold)
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f'Elapsed time: {elapsed_time:.2f} seconds')
